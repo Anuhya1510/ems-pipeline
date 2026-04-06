@@ -1,6 +1,6 @@
 database:
   driver: "ODBC Driver 17 for SQL Server"
-  server: "VK_YARRAMSHETTY\\SQLEXPRESS"
+  server: "${DB_SERVER}" 
   database: "master"
   trusted_connection: "yes"
 
@@ -10,5 +10,5 @@ source_settings:
 
 paths:
   landing_zone: "./data/"
-  archive_zone: "./data/"
-  error_zone: "./data/"
+  archive_zone: "./data/archive/"
+  error_zone: "./data/error/"

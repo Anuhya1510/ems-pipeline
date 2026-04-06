@@ -1,7 +1,12 @@
 import yaml
 import pathlib
 import os
+import urllib
 from sqlalchemy import create_engine
+from dotenv import load_dotenv
+
+base_path = pathlib.Path(__file__).parent.parent
+load_dotenv(dotenv_path=base_path / ".env")
 
 class ConfigManager:
     _config = None
@@ -9,7 +14,6 @@ class ConfigManager:
     @classmethod
     def get(cls):
         if cls._config is None:
-            base_path = pathlib.Path(__file__).parent.parent
             config_path = base_path / "config" / "config.yaml"
             
             if not config_path.exists():
@@ -17,13 +21,25 @@ class ConfigManager:
                 
             with open(config_path, "r") as f:
                 cls._config = yaml.safe_load(f)
+
+            env_server = os.getenv("DB_SERVER")
+            if env_server:
+                cls._config['database']['server'] = env_server
+            else:
+                print("Warning: DB_SERVER not found in .env, using config.yaml default.")
+
         return cls._config
 
 def get_engine():
     cfg = ConfigManager.get()['database']
-    conn_str = (
-        f"mssql+pyodbc://{cfg['server']}/{cfg['database']}?"
-        f"driver={cfg['driver'].replace(' ', '+')}&"
-        f"trusted_connection={cfg['trusted_connection']}"
+    
+    params = urllib.parse.quote_plus(
+        f"DRIVER={cfg['driver']};"
+        f"SERVER={cfg['server']};"
+        f"DATABASE={cfg['database']};"
+        f"Trusted_Connection={cfg['trusted_connection']};"
     )
+    
+    conn_str = f"mssql+pyodbc:///?odbc_connect={params}"
+    
     return create_engine(conn_str, fast_executemany=True)

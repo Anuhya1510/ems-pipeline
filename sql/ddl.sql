@@ -1,11 +1,10 @@
 /* EMS Data Warehouse Schema 
 */
 
--- 0. STAGING LAYER (Managed by Python, but defined here for documentation)
+-- 0. Staging Layer (Managed by Python, but defined here for documentation)
 IF OBJECT_ID('STG_EMS_INCIDENTS', 'U') IS NOT NULL DROP TABLE STG_EMS_INCIDENTS;
--- Note: Python's df.to_sql handles the creation of this table dynamically.
 
--- 1. DIMENSION LAYER
+-- 1. Dimension Layer
 IF OBJECT_ID('Fact_EMS_Incidents', 'U') IS NOT NULL DROP TABLE Fact_EMS_Incidents;
 IF OBJECT_ID('Dim_Location', 'U') IS NOT NULL DROP TABLE Dim_Location;
 IF OBJECT_ID('Dim_Provider', 'U') IS NOT NULL DROP TABLE Dim_Provider;
@@ -26,7 +25,7 @@ CREATE TABLE Dim_Provider (
     UNIQUE (Structure, ServiceType, ServiceLevel)
 );
 
--- 2. FACT LAYER
+-- 2. Fact Layer
 CREATE TABLE Fact_EMS_Incidents (
     IncidentID INT PRIMARY KEY,
     IncidentTimestamp DATETIME,
@@ -37,10 +36,11 @@ CREATE TABLE Fact_EMS_Incidents (
     LoadTimestamp DATETIME DEFAULT GETDATE()
 );
 
--- 3. ERROR/AUDIT LAYER
+-- 3. Error Layer
 CREATE TABLE ERR_Quarantine (
     RecordID NVARCHAR(100),
     ErrorReason NVARCHAR(MAX),
     RawData NVARCHAR(MAX),
-    LoadTimestamp DATETIME DEFAULT GETDATE()
+    LoadTimestamp DATETIME DEFAULT GETDATE(),
+    ErrorCategory NVARCHAR(100)
 );

@@ -17,6 +17,7 @@ def run_pipeline():
         # 1. Extraction
         logger.info(f"Extracting: {landing_path}")
         raw_df = EmsExtractor(landing_path).to_dataframe()
+        total_count = len(raw_df)
 
         # 2. Transformation 
         transformer = EmsTransformer()
@@ -39,6 +40,19 @@ def run_pipeline():
             loader.load_quarantine(rejected_df)
         else:
             logger.info("No malformed records found to quarantine.")
+
+        # Data Quality Summary
+        success_rate = (len(valid_df) / total_count) * 100
+        print("-" * 30)
+        print("Pipeline Quality Audit")
+        print("-" * 30)
+        print(f"Total Records:  {total_count}")
+        print(f"Valid Records:  {len(valid_df)} ({success_rate:.2f}%)")
+        print(f"Rejected:       {len(rejected_df)}")
+        if not rejected_df.empty:
+            print("\nRejection Breakdown:")
+            print(rejected_df['ErrorCategory'].value_counts())
+        print("-" * 30)
 
         logger.info("Pipeline Execution Complete.")
 

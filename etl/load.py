@@ -1,6 +1,8 @@
 import pandas as pd
 from sqlalchemy import text
 from .logger import get_logger
+from sqlalchemy.types import NVARCHAR
+import pyodbc
 
 logger = get_logger("EMS_LOADER")
 
@@ -18,40 +20,62 @@ class EmsLoader:
 
         logger.warning(f"Logging {len(df)} rejected records to ERR_Quarantine.")
         
-        error_records = pd.DataFrame({
-            'RecordID': df['_id'].astype(str),
-            'ErrorReason': df['QuarantineReason'],
-            'RawData': df.to_json(orient='records', lines=True).splitlines()
-        })
+        raw_conn = self.engine.raw_connection()
+        try:
+            cursor = raw_conn.cursor()
 
-        error_records.to_sql('ERR_Quarantine', self.engine, if_exists='append', index=False)
+            # Truncate Table
+            cursor.execute("TRUNCATE TABLE ERR_Quarantine")
+            
+            sql = """
+                INSERT INTO ERR_Quarantine (RecordID, ErrorReason, ErrorCategory, RawData) 
+                VALUES (?, ?, ?, ?)
+            """
+            
+            for _, row in df.iterrows():
+                cursor.execute(sql, (
+                    str(row['_id']),
+                    str(row['QuarantineReason']),
+                    str(row['ErrorCategory']),
+                    row.to_json()
+                ))
+
+            raw_conn.commit()
+            logger.info("Successfully quarantined records.")
+            
+        except Exception as e:
+            logger.error(f"Failed to load quarantine: {str(e)}")
+            raw_conn.rollback()
+            raise
+        finally:
+            raw_conn.close()
 
     def populate_dimensions(self):
-        logger.info("Syncing Dimensions...")
+        logger.info("Syncing Dimensions via MERGE...")
         with self.engine.begin() as conn:
-            # Dim_Location
+            # Dim_Location Merge
             conn.execute(text("""
-                INSERT INTO Dim_Location (CountyName, DestinationType)
-                SELECT DISTINCT INCIDENT_COUNTY, DESTINATION_TYPE
-                FROM STG_EMS_INCIDENTS s
-                WHERE s.INCIDENT_COUNTY IS NOT NULL 
-                AND NOT EXISTS (
-                    SELECT 1 FROM Dim_Location d 
-                    WHERE ISNULL(d.CountyName,'') = ISNULL(s.INCIDENT_COUNTY,'') 
-                    AND ISNULL(d.DestinationType,'') = ISNULL(s.DESTINATION_TYPE,'')
-                )
+                MERGE INTO Dim_Location AS T
+                USING (SELECT DISTINCT INCIDENT_COUNTY, DESTINATION_TYPE 
+                       FROM STG_EMS_INCIDENTS 
+                       WHERE INCIDENT_COUNTY IS NOT NULL) AS S
+                ON ISNULL(T.CountyName,'') = ISNULL(S.INCIDENT_COUNTY,'') 
+                AND ISNULL(T.DestinationType,'') = ISNULL(S.DESTINATION_TYPE,'')
+                WHEN NOT MATCHED THEN
+                    INSERT (CountyName, DestinationType) VALUES (S.INCIDENT_COUNTY, S.DESTINATION_TYPE);
             """))
-            # Dim_Provider
+            
+            # Dim_Provider Merge
             conn.execute(text("""
-                INSERT INTO Dim_Provider (Structure, ServiceType, ServiceLevel)
-                SELECT DISTINCT PROVIDER_TYPE_STRUCTURE, PROVIDER_TYPE_SERVICE, PROVIDER_TYPE_SERVICE_LEVEL
-                FROM STG_EMS_INCIDENTS s
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM Dim_Provider d 
-                    WHERE ISNULL(d.Structure,'') = ISNULL(s.PROVIDER_TYPE_STRUCTURE,'') 
-                    AND ISNULL(d.ServiceType,'') = ISNULL(s.PROVIDER_TYPE_SERVICE,'')
-                    AND ISNULL(d.ServiceLevel,'') = ISNULL(s.PROVIDER_TYPE_SERVICE_LEVEL,'')
-                )
+                MERGE INTO Dim_Provider AS T
+                USING (SELECT DISTINCT PROVIDER_TYPE_STRUCTURE, PROVIDER_TYPE_SERVICE, PROVIDER_TYPE_SERVICE_LEVEL 
+                       FROM STG_EMS_INCIDENTS) AS S
+                ON ISNULL(T.Structure,'') = ISNULL(S.PROVIDER_TYPE_STRUCTURE,'') 
+                AND ISNULL(T.ServiceType,'') = ISNULL(S.PROVIDER_TYPE_SERVICE,'') 
+                AND ISNULL(T.ServiceLevel,'') = ISNULL(S.PROVIDER_TYPE_SERVICE_LEVEL,'')
+                WHEN NOT MATCHED THEN
+                    INSERT (Structure, ServiceType, ServiceLevel) 
+                    VALUES (S.PROVIDER_TYPE_STRUCTURE, S.PROVIDER_TYPE_SERVICE, S.PROVIDER_TYPE_SERVICE_LEVEL);
             """))
 
     def execute_upsert_fact(self):
@@ -71,11 +95,8 @@ class EmsLoader:
         MERGE INTO Fact_EMS_Incidents AS T
         USING (SELECT * FROM SourceCTE WHERE rnk = 1) AS S ON T.IncidentID = S._id
         WHEN MATCHED THEN
-            UPDATE SET 
-                T.IncidentTimestamp = S.INCIDENT_DT,
-                T.ToSceneMins = S.PROVIDER_TO_SCENE_MINS, 
-                T.LocationKey = S.LocationKey,
-                T.ProviderKey = S.ProviderKey
+            UPDATE SET T.IncidentTimestamp = S.INCIDENT_DT, T.ToSceneMins = S.PROVIDER_TO_SCENE_MINS, 
+                       T.LocationKey = S.LocationKey, T.ProviderKey = S.ProviderKey
         WHEN NOT MATCHED THEN
             INSERT (IncidentID, IncidentTimestamp, ToSceneMins, IsInjury, LocationKey, ProviderKey)
             VALUES (S._id, S.INCIDENT_DT, S.PROVIDER_TO_SCENE_MINS, S.INJURY_FLG, S.LocationKey, S.ProviderKey);

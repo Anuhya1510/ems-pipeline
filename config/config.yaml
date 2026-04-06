@@ -1,0 +1,14 @@
+database:
+  driver: "ODBC Driver 17 for SQL Server"
+  server: "VK_YARRAMSHETTY\\SQLEXPRESS"
+  database: "master"
+  trusted_connection: "yes"
+
+source_settings:
+  input_file: "ems.csv"
+  batch_size: 5000
+
+paths:
+  landing_zone: "./data/"
+  archive_zone: "./data/"
+  error_zone: "./data/"

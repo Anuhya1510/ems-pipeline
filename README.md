@@ -41,7 +41,7 @@ The pipeline categorizes the **32 rejections** into three specific business-driv
 
 ## Logging & Error Handling
 * **Automated Table Truncation**: The `ERR_Quarantine` table is automatically truncated at the start of each load cycle to prevent "cumulative append noise."
-* **Auditability**: Quarantined records are moved to `ERR_Quarantine`. We use a JSON Serialization pattern to preserve the full raw record alongside a `ErrorReason` for medical auditors.
+* **Auditability**: Quarantined records are moved to `ERR_Quarantine`. We use a JSON Serialization pattern to preserve the full raw record alongside a `QuarantineReason` for medical auditors.
 * **Logging**: A dedicated Python `logging` module tracks the ETL lifecycle, row counts, and execution time for performance monitoring.
 
 ## Automated Testing

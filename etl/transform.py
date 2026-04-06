@@ -64,7 +64,7 @@ class EmsTransformer:
                 math_fail = ((df[col] < 0) | (df[col] > 1440)) & df['is_valid']
                 df.loc[math_fail, 'is_valid'] = False
                 df.loc[math_fail, 'ErrorCategory'] = "Duration Outlier/Negative"
-                df.loc[math_fail, 'QuarantineReason'] += f"{col} out of bounds; "
+                df.loc[math_fail, 'QuarantineReason'] += f"{col} value ({df.loc[math_fail, col].iloc[0]}) out of bounds; "
 
         # 5. Validation Rule: Duplicate Records
         if '_id' in df.columns:

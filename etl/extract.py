@@ -4,5 +4,7 @@ class EmsExtractor:
     def __init__(self, file_path):
         self.file_path = file_path
 
-    def to_dataframe(self):
+    def to_dataframe(self, chunksize=None):
+        if chunksize:
+            return pd.read_csv(self.file_path, chunksize=chunksize)
         return pd.read_csv(self.file_path)

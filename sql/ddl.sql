@@ -25,6 +25,13 @@ CREATE TABLE Dim_Provider (
     UNIQUE (Structure, ServiceType, ServiceLevel)
 );
 
+-- Dimension Layer Indexes
+CREATE NONCLUSTERED INDEX IX_Dim_Location 
+ON Dim_Location (CountyName, DestinationType);
+
+CREATE NONCLUSTERED INDEX IX_Dim_Provider 
+ON Dim_Provider (Structure, ServiceType, ServiceLevel);
+
 -- 2. Fact Layer
 CREATE TABLE Fact_EMS_Incidents (
     IncidentID INT PRIMARY KEY,
@@ -36,6 +43,16 @@ CREATE TABLE Fact_EMS_Incidents (
     LoadTimestamp DATETIME DEFAULT GETDATE()
 );
 
+-- Fact Layer Indexes
+CREATE CLUSTERED INDEX IX_Fact_IncidentID 
+ON Fact_EMS_Incidents (IncidentID);
+
+CREATE NONCLUSTERED INDEX IX_Fact_LocationKey 
+ON Fact_EMS_Incidents (LocationKey);
+
+CREATE NONCLUSTERED INDEX IX_Fact_ProviderKey 
+ON Fact_EMS_Incidents (ProviderKey);
+
 -- 3. Error Layer
 CREATE TABLE ERR_Quarantine (
     RecordID NVARCHAR(100),
@@ -44,3 +61,12 @@ CREATE TABLE ERR_Quarantine (
     LoadTimestamp DATETIME DEFAULT GETDATE(),
     ErrorCategory NVARCHAR(100)
 );
+
+-- 4. Pipeline Track Layer
+CREATE TABLE ETL_Metadata (
+    PipelineName VARCHAR(100),
+    LastRunTimestamp DATETIME
+);
+
+INSERT INTO ETL_Metadata (PipelineName, LastRunTimestamp)
+VALUES ('EMS_PIPELINE', '1900-01-01');

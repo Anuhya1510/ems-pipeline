@@ -2,7 +2,7 @@ import yaml
 import pathlib
 import os
 import urllib
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 base_path = pathlib.Path(__file__).parent.parent
@@ -43,3 +43,23 @@ def get_engine():
     conn_str = f"mssql+pyodbc:///?odbc_connect={params}"
     
     return create_engine(conn_str, fast_executemany=True)
+
+
+def get_last_run_timestamp(engine):
+    query = """
+        SELECT LastRunTimestamp 
+        FROM ETL_Metadata 
+        WHERE PipelineName = 'EMS_PIPELINE'
+    """
+    with engine.begin() as conn:
+        result = conn.execute(text(query)).fetchone()
+        return result[0]
+
+def update_last_run_timestamp(engine, new_timestamp):
+    query = """
+        UPDATE ETL_Metadata
+        SET LastRunTimestamp = :ts
+        WHERE PipelineName = 'EMS_PIPELINE'
+    """
+    with engine.begin() as conn:
+        conn.execute(text(query), {"ts": new_timestamp})

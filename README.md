@@ -70,3 +70,5 @@ The system includes a robust test suite to prevent regression:
 2. **Configuration**: Set your connection string in `config/config.yaml`.
 3. **Data**: Place the EMS CSV in the `data/` folder.
 4. **Execute**: Run `python main.py`.
+5. **Testing**: Run `python -m pytest` to verify the "Data Quality Firewall" logic against the unit test suite.
+6. **Memory Profile**: Ensure the system has at least 1GB of RAM available to handle the 5,000-row processing chunks.

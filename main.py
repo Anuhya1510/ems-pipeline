@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from collections import Counter
 from etl import (
     get_logger, get_engine, ConfigManager, 
     EmsExtractor, EmsTransformer, EmsLoader
@@ -22,12 +23,17 @@ def run_pipeline():
         chunk_size = 5000
         extractor = EmsExtractor(landing_path)
         raw_chunks = extractor.to_dataframe(chunksize=chunk_size)
-        valid_dfs = []
-        rejected_dfs = []
+        
+        # Tracking variables for memory efficiency
         total_count = 0
+        total_valid_len = 0
+        total_rejected_len = 0
+        rejection_counts = Counter()
+        first_chunk = True
 
         # 2. Transformation 
         transformer = EmsTransformer()
+        loader = EmsLoader(engine)
 
         for chunk in raw_chunks:
             total_count += len(chunk)
@@ -36,49 +42,56 @@ def run_pipeline():
                 chunk['INCIDENT_DT'] = pd.to_datetime(chunk['INCIDENT_DT'], errors='coerce')
                 chunk = chunk[chunk['INCIDENT_DT'] > last_run_ts]
 
-            valid_df, rejected_df = transformer.clean_and_validate(chunk)
+            valid_chunk, rejected_chunk = transformer.clean_and_validate(chunk)
+            
+            # Update running totals
+            total_valid_len += len(valid_chunk)
+            total_rejected_len += len(rejected_chunk)
+            if not rejected_chunk.empty:
+                rejection_counts.update(rejected_chunk['ErrorCategory'].tolist())
 
-            valid_dfs.append(valid_df)
-            rejected_dfs.append(rejected_df)
-        valid_df = pd.concat(valid_dfs, ignore_index=True)
-        rejected_df = pd.concat(rejected_dfs, ignore_index=True)
+            # 3. Load Logic (Chunk-based streaming)
+            
+            # A: Load valid data to Staging
+            if not valid_chunk.empty:
+                # Use 'replace' for first chunk to clear table, 'append' thereafter
+                load_mode = 'replace' if first_chunk else 'append'
+                loader.load_staging(valid_chunk, mode=load_mode)
+                first_chunk = False
+            
+            # D: Handle Bad Data (Streaming to Quarantine)
+            if not rejected_chunk.empty:
+                loader.load_quarantine(rejected_chunk)
 
-        # 3. Load Logic
-        loader = EmsLoader(engine)
-        
-        # A: Load valid data to Staging
-        loader.load_staging(valid_df)
-        
-        # B: Populate Dimensions
-        loader.populate_dimensions()
-        
-        # C: Merge into Fact
-        loader.execute_upsert_fact()
-
-        # D: Handle Bad Data
-        if not rejected_df.empty:
-            loader.load_quarantine(rejected_df)
+        # After all chunks are processed, finalize the Warehouse
+        if total_valid_len > 0:
+            # B: Populate Dimensions
+            loader.populate_dimensions()
+            
+            # C: Merge into Fact
+            loader.execute_upsert_fact()
         else:
-            logger.info("No malformed records found to quarantine.")
+            logger.info("No new records found to process.")
 
         # Data Quality Summary
-        success_rate = (len(valid_df) / total_count) * 100
+        success_rate = (total_valid_len / total_count) * 100 if total_count > 0 else 0
         print("-" * 30)
         print("Pipeline Quality Audit")
         print("-" * 30)
         print(f"Total Records:  {total_count}")
-        print(f"Valid Records:  {len(valid_df)} ({success_rate:.2f}%)")
-        print(f"Rejected:       {len(rejected_df)}")
-        if not rejected_df.empty:
+        print(f"Valid Records:  {total_valid_len} ({success_rate:.2f}%)")
+        print(f"Rejected:       {total_rejected_len}")
+        if total_rejected_len > 0:
             print("\nRejection Breakdown:")
-            print(rejected_df['ErrorCategory'].value_counts())
+            for category, count in rejection_counts.items():
+                print(f"{category:<28} {count}")
         print("-" * 30)
 
         logger.info("Pipeline Execution Complete.")
 
-        if not valid_df.empty:
-            max_ts = valid_df['INCIDENT_DT'].max()
-            update_last_run_timestamp(engine, max_ts)
+        # Update watermark if data was processed
+        if total_valid_len > 0:
+            update_last_run_timestamp(engine, pd.to_datetime('now'))
 
     except Exception as e:
         logger.error(f"Critical Failure: {str(e)}", exc_info=True)

@@ -10,9 +10,9 @@ class EmsLoader:
     def __init__(self, engine):
         self.engine = engine
 
-    def load_staging(self, df: pd.DataFrame, table_name="STG_EMS_INCIDENTS"):
-        logger.info(f"Refreshing Staging: {table_name}")
-        df.to_sql(table_name, self.engine, if_exists='replace', index=False)
+    def load_staging(self, df: pd.DataFrame, table_name="STG_EMS_INCIDENTS", mode='replace'):
+        logger.info(f"Loading to Staging ({mode}): {table_name}")
+        df.to_sql(table_name, self.engine, if_exists=mode, index=False)
 
     def load_quarantine(self, df: pd.DataFrame):
         if df.empty:
@@ -25,7 +25,7 @@ class EmsLoader:
             cursor = raw_conn.cursor()
 
             # Truncate Table
-            cursor.execute("TRUNCATE TABLE ERR_Quarantine")
+            #cursor.execute("TRUNCATE TABLE ERR_Quarantine")
             
             sql = """
                 INSERT INTO ERR_Quarantine (RecordID, ErrorReason, ErrorCategory, RawData) 
